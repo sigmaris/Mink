@@ -19,6 +19,11 @@ namespace Behat\Mink\Driver\Zombie;
 class Server
 {
     /**
+     * @var     string the node.js deprecation warning for using 'sys'
+     */
+    const NODE_SYS_DEPRECATION_WARNING = 'The "sys" module is now called "util". It should have a similar interface.';
+
+    /**
      * @var     string
      */
     private $host;
@@ -190,9 +195,18 @@ class Server
             $output .= fread($pipes[1], 8192);
             $error  .= fread($pipes[2], 8192);
 
-            if ($error && '' !== trim($error)) {
+            if ($error && '' !== trim($error) && self::NODE_SYS_DEPRECATION_WARNING !== trim($error)) {
                 usleep(10000);
                 $error .= fread($pipes[2], 8192);
+
+                // Close pipes to avoid deadlocks on proc_close
+                foreach ($pipes as $pipe) {
+                    fclose($pipe);
+                }
+                // Cleanup process
+                if ($this->isRunning()) {
+                    $this->killZombieServer();
+                }
 
                 $this->process = null;
                 throw new \RuntimeException(sprintf(
@@ -231,7 +245,6 @@ class Server
     {
         return <<<'JS'
 var net = require('net');
-var sys = require('sys');
 var zombie = require('zombie');
 var browser = null;
 var pointers = [];
